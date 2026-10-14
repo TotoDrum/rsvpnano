@@ -26,6 +26,9 @@
   <a href="https://discord.gg/mB5xv2PG53">Discord</a>
 </p>
 
+> **Even G2 fork.** This branch adds [`glasses/`](glasses/README.md), a port of the reader to
+> Even Realities G2 smart glasses as an Even Hub app. The ESP32 firmware and companions are unchanged.
+
 ## What is RSVP Nano?
 
 RSVP Nano is a small standalone reader that presents text one word at a time using Rapid Serial

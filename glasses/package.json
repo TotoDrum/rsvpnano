@@ -1,0 +1,26 @@
+{
+  "name": "rsvpnano-even-g2",
+  "private": true,
+  "version": "0.1.0",
+  "description": "RSVP Nano speed reader for Even Realities G2 glasses",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "qr": "evenhub qr --http --port 5173",
+    "sim": "evenhub-simulator http://localhost:5173",
+    "pack": "npm run build && evenhub pack app.json dist -o rsvpnano.ehpk"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "^0.0.16",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "^0.1.14",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  }
+}
