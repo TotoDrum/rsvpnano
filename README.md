@@ -124,6 +124,108 @@ To connect over Wi-Fi, open Companion Sync on the Nano. The apps prefer a reader
 same local network and can fall back to the Nano's direct `RSVP-Nano-xxxxxx` network or a manual
 address. The web companion can also connect directly over USB on supported desktop browsers.
 
+## Even Realities G2 glasses
+
+This fork adds [`glasses/`](glasses/README.md), an Even Hub app that runs the RSVP Nano reader on
+Even Realities G2 smart glasses. It is a separate web app; the firmware and companions above are
+unchanged.
+
+### How it works
+
+The app has two halves that run together inside the Even App on your phone:
+
+- **Phone page.** Library, file import (EPUB, TXT, Markdown, HTML, XHTML), reading settings and a
+  live preview of the lens. Files are converted on the phone; nothing is uploaded anywhere.
+- **Glasses pages.** The phone sends text to the lenses over Bluetooth through the Even Hub SDK. The
+  glasses show a library list, then the reader: one word at a time, with guide ticks marking the
+  focus letter. When paused, the surrounding text and reading progress appear above and below.
+
+The reading engine is a TypeScript port of the firmware's:
+
+- **Pacing** (`src/reader/ReadingLoop.cpp`): each word gets `60000 / wpm` ms plus extra time for long
+  words, complex words and punctuation, with the same constants as the firmware.
+- **Focus letter** (`ReaderScreen::focusOffset`): the same optimal recognition point table.
+- **Tokenizer** (`src/text/RsvpTokenizer.h`): ellipsis joining, dash tokens and paragraph tracking.
+
+Books, progress and settings are saved through the Even App's own storage, because the WebView's
+browser storage is wiped when the app restarts.
+
+### G2 limits
+
+- **Speed tops out at 600 wpm.** Each lens text update takes about 80 ms over Bluetooth. Updates are
+  sent one at a time, and if words arrive faster than the link can carry them, stale words are
+  skipped rather than queued.
+- **Focus letter alignment is estimated.** The glasses use one built-in proportional font with no
+  centering, so words are padded with spaces from a glyph width table. Use **Font width calibration**
+  on the phone page until the focus letter sits between the guide ticks.
+- **Not ported:** page reading mode, right-to-left and CJK shaping, custom fonts and themes, focus
+  timers, RSS, screensavers and OTA.
+
+### Controls
+
+| Where | Gesture | Action |
+| --- | --- | --- |
+| Library | Swipe | Move selection |
+| Library | Tap | Open book at saved position |
+| Library | Double-tap | Exit app |
+| Reader | Tap | Play or pause |
+| Reader, playing | Swipe | Faster or slower (25 wpm steps) |
+| Reader, paused | Swipe | Next or previous sentence |
+| Reader | Double-tap | Save progress and return to the library |
+
+### Run it on your glasses
+
+You need Node.js 20 or later, the Even App on your phone, and the phone and computer on the same
+Wi-Fi network.
+
+1. Install the dependencies and run the tests:
+
+   ```bash
+   cd glasses
+   npm install
+   npm test
+   ```
+
+2. Allow the dev server through the firewall. On Fedora:
+
+   ```bash
+   sudo firewall-cmd --add-port=5173/tcp
+   ```
+
+   Add `--permanent` to keep the rule after a reboot.
+
+3. Start the dev server and leave it running:
+
+   ```bash
+   npm run dev
+   ```
+
+   Note the `Network:` address it prints, such as `http://192.168.1.20:5173`. Use the IPv4 address.
+
+4. In a second terminal, generate a QR code for that address:
+
+   ```bash
+   npx evenhub qr --url "http://192.168.1.20:5173"
+   ```
+
+5. Scan the QR code with the Even App. The app opens on the glasses, with a welcome book already in
+   the library.
+
+Code changes reload live on the glasses while `npm run dev` is running. To build a package for
+distribution, run `npm run pack`, which produces `glasses/rsvpnano.ehpk`.
+
+### Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| `npm install` fails with `ERESOLVE` and a TypeScript peer conflict | The Even Hub CLI requires TypeScript 5. Check that `package.json` lists `"typescript": "^5.9.3"`, delete `node_modules` and `package-lock.json`, and install again. |
+| `vite: command not found` or `vitest: command not found` | `npm install` did not finish. Fix the install error first. |
+| The QR code opens nothing | Open the same address in your phone's browser. If it shows "Preview mode", the network is fine. If it doesn't load, check the firewall rule and that both devices are on the same Wi-Fi, not a guest network. |
+| The focus letter drifts off the guide ticks | Adjust **Font width calibration** on the phone page. |
+
+Opening the dev server address in a normal desktop browser runs **preview mode**: there is no glasses
+connection, and the lens preview shows exactly what would be sent to the glasses.
+
 ## Library and SD card
 
 The firmware creates its standard folders when writable storage is available. The main layout is:
@@ -205,6 +307,7 @@ The staged website is written to `build/webSite`. Detailed native setup is in th
 | `companion/shared/` | Shared companion models, API clients, persistence, and workflows |
 | `companion/conversion/` | Shared Kotlin Multiplatform document conversion |
 | `companion/apps/` | Android, iOS, and web applications |
+| `glasses/` | Even Realities G2 port as an Even Hub app (TypeScript) |
 | `fonts/`, `themes/`, `locale-packs/` | Installable catalogs |
 | `localization/` | Locale and UI-font generation |
 | `test/` | Native firmware tests |
