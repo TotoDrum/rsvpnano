@@ -64,5 +64,3 @@ npm run pack           # builds dist/ and rsvpnano.ehpk
 
 Opening the page in a normal browser runs **preview mode**: no bridge, browser
 storage, and the lens preview shows exactly what would be sent to the glasses.
-
-Change `package_id` in `app.json` before publishing to Even Hub.
