@@ -7,19 +7,35 @@
 //            swipe while paused: previous / next sentence
 //            double-tap: save and return to the library
 import { OsEventTypeList, type EvenAppBridge, type EvenHubEvent } from '@evenrealities/even_hub_sdk';
+import { getTextWidth, measureTextWrap, pxTruncate } from '@evenrealities/pretext';
 import { layoutWord } from '../engine/orp';
 import { wordDurationMs } from '../engine/pacing';
 import { ReadingSession } from '../engine/session';
 import { tokenize } from '../engine/tokenizer';
 import { WPM_STEP, clampWpm, type BookMeta, type Store } from '../storage';
-import { GlassesDisplay, SCREEN_W, type Page } from './display';
+import { GlassesDisplay, SCREEN_H, SCREEN_W, type Page } from './display';
 
 const ANCHOR_PX = Math.round(SCREEN_W * 0.42);
 const SWIPE_COOLDOWN_MS = 250;
 const PROGRESS_SAVE_MS = 10_000;
 const LEAD_IN_MS = 350;
 const STATUS_FLASH_MS = 1500;
-const CONTEXT_CHARS = 150;
+// Oversized on purpose: renderPaused trims the context to CONTEXT_LINES by measurement.
+const CONTEXT_CHARS = 240;
+
+// Firmware text metrics: every text line is 27 px, every list item 40 px.
+const LINE_H = 27;
+const CONTEXT_LINES = 3;
+const CONTEXT_X = 16;
+const CONTEXT_W = SCREEN_W - 2 * CONTEXT_X;
+
+const LIST_X = 8;
+const LIST_Y = 44;
+const LIST_W = 560;
+const LIST_PADDING = 4; // paddingLength of list containers in display.ts
+const LIST_ITEM_H = 40;
+const LIST_ITEM_PADDING = 12; // firmware padding on each side of a list item
+const LIST_TEXT_PX = LIST_W - 2 * LIST_PADDING - 2 * LIST_ITEM_PADDING;
 
 type Mode = 'library' | 'reader';
 type Listener = () => void;
@@ -83,10 +99,13 @@ export class GlassesApp {
     return [
       { kind: 'text', id: 1, name: 'title', x: 16, y: 4, w: 544, h: 36, content: 'RSVP Nano  -  Library', brightness: 2 },
       {
-        kind: 'list', id: 2, name: 'library', x: 8, y: 44, w: 560, h: 240, capture: true, selected: 0,
+        kind: 'list', id: 2, name: 'library', x: LIST_X, y: LIST_Y, w: LIST_W,
+        h: Math.min(books.length * LIST_ITEM_H + 2 * LIST_PADDING, SCREEN_H - LIST_Y),
+        capture: true, selected: 0,
         items: books.map((b) => {
           const pct = b.wordCount > 1 ? Math.round(((this.libraryProgress.get(b.id) ?? 0) / (b.wordCount - 1)) * 100) : 0;
-          return `${b.title.slice(0, 44)}  ${pct}%`;
+          const suffix = `  ${pct}%`;
+          return pxTruncate(b.title, LIST_TEXT_PX - getTextWidth(suffix)) + suffix;
         }),
       },
     ];
@@ -115,31 +134,31 @@ export class GlassesApp {
   private readerPage(): Page {
     const s = this.store.settings;
     return [
-      { kind: 'text', id: 1, name: 'context', x: 16, y: 0, w: 544, h: 92, content: '', brightness: 2 },
-      { kind: 'text', id: 2, name: 'word', x: 0, y: 96, w: SCREEN_W, h: 120, content: '', capture: true, brightness: s.wordBrightness },
-      { kind: 'text', id: 3, name: 'status', x: 16, y: 250, w: 544, h: 36, content: '', brightness: 2 },
+      // Sized to whole lines so the firmware never scrolls them. Word is guide, word, guide.
+      { kind: 'text', id: 1, name: 'context', x: CONTEXT_X, y: 0, w: CONTEXT_W, h: CONTEXT_LINES * LINE_H, content: '', brightness: 2 },
+      { kind: 'text', id: 2, name: 'word', x: 0, y: Math.floor((SCREEN_H - 3 * LINE_H) / 2), w: SCREEN_W, h: 3 * LINE_H, content: '', capture: true, brightness: s.wordBrightness },
+      { kind: 'text', id: 3, name: 'status', x: CONTEXT_X, y: SCREEN_H - LINE_H, w: CONTEXT_W, h: LINE_H, content: '', brightness: 2 },
     ];
   }
 
   private renderWord(): void {
     if (!this.session) return;
     const s = this.store.settings;
-    const { line, guide } = layoutWord(this.session.current, ANCHOR_PX / s.fontScale, s.alignment);
+    const { line, guide } = layoutWord(this.session.current, ANCHOR_PX, s.alignment);
     const content = s.showGuides ? `${guide}\n${line}\n${guide}` : `\n${line}`;
     this.display.setText('word', content, s.wordBrightness);
   }
 
-  private statusLine(extra = ''): string {
+  private statusLine(): string {
     if (!this.session) return '';
-    const pct = Math.round(this.session.progress * 100);
     const state = this.session.atEnd && !this.playing ? 'end' : this.playing ? '' : 'paused';
-    return [`${this.store.settings.wpm} wpm`, `${pct}%`, state, extra].filter(Boolean).join('   ');
+    return statusWithBar(`${this.store.settings.wpm} wpm`, this.session.progress, state);
   }
 
   private renderPaused(): void {
     if (!this.session) return;
     const { before, after } = this.session.context(CONTEXT_CHARS);
-    this.display.setText('context', `${before} [${this.session.current}] ${after}`.trim());
+    this.display.setText('context', fitContext(before, this.session.current, after));
     this.display.setText('status', this.statusLine());
   }
 
@@ -151,17 +170,16 @@ export class GlassesApp {
     }, STATUS_FLASH_MS);
   }
 
-  play(): void {
-    if (!this.session || this.playing) return;
-    if (this.session.atEnd) this.session.seekTo(0);
-    this.playing = true;
-    this.display.setText('context', '');
-    this.display.setText('status', '');
-    this.renderWord();
-    this.nextAt = performance.now() + LEAD_IN_MS;
-    this.schedule();
-    this.changed();
-  }
+   play(): void {
+     if (!this.session || this.playing) return;
+     if (this.session.atEnd) this.session.seekTo(0);
+     this.playing = true;
+     this.display.clearOverlays();
+     this.renderWord();
+     this.nextAt = performance.now() + LEAD_IN_MS;
+     this.schedule();
+     this.changed();
+   }
 
   pause(): void {
     if (!this.playing) return;
@@ -309,8 +327,46 @@ export class GlassesApp {
       const now = performance.now();
       if (now - this.lastSwipe < SWIPE_COOLDOWN_MS) return;
       this.lastSwipe = now;
-      if (this.playing) this.adjustWpm(isDown ? 1 : -1);
+      if (this.playing) this.adjustWpm(isUp ? 1 : -1);
       else this.stepSentence(isDown ? 1 : -1);
     }
   }
+}
+
+/**
+ * "before [word] after", trimmed from the outer ends until it wraps to at most
+ * CONTEXT_LINES in the context container. Trims the longer side first so the
+ * current word stays near the middle.
+ */
+export function fitContext(before: string, word: string, after: string): string {
+  const head = before ? before.split(' ') : [];
+  const tail = after ? after.split(' ') : [];
+  const join = () => [...head, `[${word}]`, ...tail].join(' ');
+  let text = join();
+  while ((head.length || tail.length) && measureTextWrap(text, CONTEXT_W).lineCount > CONTEXT_LINES) {
+    if (head.length >= tail.length) head.shift();
+    else tail.pop();
+    text = join();
+  }
+  return text;
+}
+
+const BAR_DONE = '━';
+const BAR_TODO = '─';
+
+/**
+ * "left  ━━━━──────  right", with the bar filling whatever the status
+ * container has left so the whole line stays on one row.
+ */
+export function statusWithBar(left: string, fraction: number, right: string): string {
+  const line = (cells: number) => {
+    const done = Math.round(Math.min(1, Math.max(0, fraction)) * cells);
+    const bar = BAR_DONE.repeat(done) + BAR_TODO.repeat(cells - done);
+    return [left, bar, right].filter(Boolean).join('  ');
+  };
+  const cellPx = Math.max(getTextWidth(BAR_DONE), getTextWidth(BAR_TODO));
+  let cells = Math.max(0, Math.floor((CONTEXT_W - getTextWidth(line(0))) / cellPx));
+  // Kerning and rounding can push the estimate over by a pixel; back off until it fits.
+  while (cells > 0 && getTextWidth(line(cells)) > CONTEXT_W) cells--;
+  return line(cells);
 }

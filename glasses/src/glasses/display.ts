@@ -83,6 +83,20 @@ export class GlassesDisplay {
     this.show(this.page);
   }
 
+  /** Clear context and status overlays by rebuilding the page. */
+  clearOverlays(): void {
+    for (const box of this.page) {
+      if (box.kind === 'text' && (box.name === 'context' || box.name === 'status')) {
+        box.content = '';
+      }
+    }
+    const page = this.page.map((b) => ({ ...b }));
+    this.pendingPage = page;
+    this.pendingText.clear();
+    this.emit();
+    void this.pump();
+  }
+
   /** Update one text container in place (flicker-free). */
   setText(name: string, content: string, brightness?: number): void {
     const box = this.page.find((b): b is TextBox => b.kind === 'text' && b.name === name);
@@ -122,6 +136,7 @@ export class GlassesDisplay {
             containerID: box.id,
             containerName: box.name,
             content: update.content,
+            contentLength: update.content.length,
             ...(update.brightness !== undefined ? { textColor: update.brightness } : {}),
           }),
         );

@@ -68,9 +68,6 @@ export function mountPhoneUi(root: HTMLElement, app: GlassesApp, store: Store, c
       <label class="check"><input type="checkbox" id="s-guides"> Focus guides</label>
       <label>Word brightness <output id="o-bright"></output>
         <input type="range" id="s-bright" min="1" max="4" step="1"></label>
-      <label>Font width calibration <output id="o-scale"></output>
-        <input type="range" id="s-scale" min="12" max="30" step="1"></label>
-      <p class="hint">If the focus letter drifts left or right of the guides on your lenses, nudge the calibration until it sits under them.</p>
     </section>
 
     <section class="card help">
@@ -217,7 +214,6 @@ export function mountPhoneUi(root: HTMLElement, app: GlassesApp, store: Store, c
     ['s-align', null, () => s.alignment, (v) => (s.alignment = v as 'orp' | 'center')],
     ['s-guides', null, () => s.showGuides, (_v, el) => (s.showGuides = el.checked)],
     ['s-bright', 'o-bright', () => s.wordBrightness, (v) => (s.wordBrightness = Number(v)), (v) => `${v} / 4`],
-    ['s-scale', 'o-scale', () => s.fontScale, (v) => (s.fontScale = Number(v)), (v) => `${v}`],
   ];
 
   const renderSettings = () => {

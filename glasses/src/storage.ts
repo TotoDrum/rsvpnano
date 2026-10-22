@@ -9,8 +9,6 @@ export interface Settings {
   wpm: number;
   pacing: PacingSettings;
   alignment: 'orp' | 'center';
-  /** Pixels per glyph-width unit; tune if the focus letter drifts. */
-  fontScale: number;
   showGuides: boolean;
   wordBrightness: number;
 }
@@ -23,7 +21,6 @@ export const DEFAULT_SETTINGS: Settings = {
   wpm: 300,
   pacing: { ...DEFAULT_PACING },
   alignment: 'orp',
-  fontScale: 20,
   showGuides: true,
   wordBrightness: 4,
 };

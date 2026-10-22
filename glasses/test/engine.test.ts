@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { focusIndex, layoutWord, textWidth, glyphWidth } from '../src/engine/orp';
+import { getTextWidth } from '@evenrealities/pretext';
+import { focusIndex, layoutWord } from '../src/engine/orp';
 import { DEFAULT_PACING, endsSentence, punctuationPausePercent, wordDurationMs } from '../src/engine/pacing';
 import { ReadingSession } from '../src/engine/session';
 import { MAX_TOKEN_CHARS, tokenize } from '../src/engine/tokenizer';
@@ -64,14 +65,22 @@ describe('ORP', () => {
   });
 
   it('pads words so the focus letter lands on the anchor', () => {
-    const anchor = 12;
-    for (const word of ['I', 'cat', 'reading', 'extraordinary']) {
+    const anchor = 242; // ANCHOR_PX in src/glasses/app.ts
+    const space = getTextWidth(' ');
+    for (const word of ['I', 'cat', 'reading', 'extraordinary', 'Wow!', '"Quote', 'jiffy']) {
       const { line } = layoutWord(word, anchor, 'orp');
-      const pad = line.length - word.length;
       const idx = focusIndex(word);
-      const focusCenter = pad * glyphWidth(' ') + textWidth(word.slice(0, idx)) + glyphWidth(word[idx]) / 2;
-      expect(Math.abs(focusCenter - anchor)).toBeLessThanOrEqual(glyphWidth(' ') / 2 + 1e-9);
+      const focusWidth = getTextWidth(word[idx]);
+      const focusCenter = getTextWidth(line.slice(0, line.length - word.length + idx + 1)) - focusWidth / 2;
+      expect(Math.abs(focusCenter - anchor)).toBeLessThanOrEqual(space / 2);
     }
+  });
+
+  it('pads the guide mark onto the anchor', () => {
+    const anchor = 242;
+    const { guide } = layoutWord('', anchor, 'orp');
+    const center = getTextWidth(guide) - getTextWidth('|') / 2;
+    expect(Math.abs(center - anchor)).toBeLessThanOrEqual(getTextWidth(' ') / 2);
   });
 });
 

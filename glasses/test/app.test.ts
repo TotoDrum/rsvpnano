@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { OsEventTypeList, type EvenAppBridge, type EvenHubEvent } from '@evenrealities/even_hub_sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GlassesApp } from '../src/glasses/app';
+import { getTextWidth, measureTextWrap } from '@evenrealities/pretext';
+import { GlassesApp, fitContext, statusWithBar } from '../src/glasses/app';
 import { tokenize } from '../src/engine/tokenizer';
 import { Store } from '../src/storage';
 
@@ -114,6 +115,34 @@ describe('GlassesApp with a fake bridge', () => {
     expect(status?.arg.content).toContain('end');
   });
 
+   it('clears context and status text when play starts', async () => {
+     const { fake, app, book } = await setup();
+     await app.openBook(book.id);
+     await vi.advanceTimersByTimeAsync(500);
+     // After openBook, context and status should have non-empty content
+     const contextBefore = fake.calls.filter((c) => c.method === 'text' && c.arg.containerName === 'context');
+     const statusBefore = fake.calls.filter((c) => c.method === 'text' && c.arg.containerName === 'status');
+     expect(contextBefore[contextBefore.length - 1].arg.content).not.toBe('');
+     expect(statusBefore[statusBefore.length - 1].arg.content).not.toBe('');
+
+     fake.calls.length = 0;
+     app.play();
+     expect(app.playing).toBe(true);
+     await vi.advanceTimersByTimeAsync(500);
+
+     // play() clears overlays via rebuildPageContainer, which sends a fresh page
+     const rebuildCalls = fake.calls.filter((c) => c.method === 'rebuild');
+     expect(rebuildCalls.length).toBeGreaterThan(0);
+     const lastRebuild = rebuildCalls[rebuildCalls.length - 1].arg;
+     const textObjects: any[] = lastRebuild.textObject ?? [];
+     const context = textObjects.find((t) => t.containerName === 'context');
+     const status = textObjects.find((t) => t.containerName === 'status');
+     expect(context).toBeDefined();
+     expect(context!.content).toBe('');
+     expect(status).toBeDefined();
+     expect(status!.content).toBe('');
+   });
+
   it('maps swipes to speed while playing and sentences while paused', async () => {
     const { fake, app, store, book } = await setup();
     await app.openBook(book.id);
@@ -157,5 +186,47 @@ describe('GlassesApp with a fake bridge', () => {
     const meta = await store.addBook('Long', long, 40_000);
     expect(meta.chunks).toBeGreaterThan(1);
     expect(await store.bookText(meta)).toBe(long);
+  });
+});
+
+describe('paused context', () => {
+  const words = (n: number, w: string) => Array.from({ length: n }, (_, i) => `${w}${i}`).join(' ');
+
+  it('trims long context to three lines around the current word', () => {
+    const text = fitContext(words(40, 'before'), 'current', words(40, 'after'));
+    expect(measureTextWrap(text, 544).lineCount).toBeLessThanOrEqual(3);
+    expect(text).toContain('[current]');
+    expect(text).toContain('before39 [current] after0');
+  });
+
+  it('leaves short context untouched', () => {
+    expect(fitContext('one two', 'three', 'four')).toBe('one two [three] four');
+    expect(fitContext('', 'alone', '')).toBe('[alone]');
+  });
+});
+
+describe('status progress bar', () => {
+  const cells = (line: string) => [...line].filter((c) => c === '━' || c === '─').length;
+
+  it('fills the status line without wrapping', () => {
+    for (const [left, right] of [['100 wpm', 'paused'], ['600 wpm', 'end'], ['300 wpm', '']]) {
+      const line = statusWithBar(left, 0.5, right);
+      expect(getTextWidth(line)).toBeLessThanOrEqual(544);
+      expect(544 - getTextWidth(line)).toBeLessThan(getTextWidth('━'));
+      expect(line.startsWith(`${left}  `)).toBe(true);
+      if (right) expect(line.endsWith(`  ${right}`)).toBe(true);
+    }
+  });
+
+  it('fills in proportion to progress', () => {
+    const empty = statusWithBar('300 wpm', 0, 'paused');
+    const full = statusWithBar('300 wpm', 1, 'paused');
+    const n = cells(empty);
+    expect(n).toBeGreaterThan(10);
+    expect(empty).not.toContain('━');
+    expect(full).not.toContain('─');
+    expect(cells(full)).toBe(n);
+    const half = statusWithBar('300 wpm', 0.5, 'paused');
+    expect([...half].filter((c) => c === '━').length).toBe(Math.round(n / 2));
   });
 });

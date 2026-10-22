@@ -1,8 +1,8 @@
 {
-  "package_id": "com.thomasbaker.rsvpnano",
+  "package_id": "io.github.totodrum.rsvpnanog2",
   "edition": "202601",
   "name": "RSVP Nano",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "min_app_version": "2.2.10",
   "min_sdk_version": "0.0.16",
   "entrypoint": "index.html",

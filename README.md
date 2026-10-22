@@ -155,9 +155,10 @@ browser storage is wiped when the app restarts.
 - **Speed tops out at 600 wpm.** Each lens text update takes about 80 ms over Bluetooth. Updates are
   sent one at a time, and if words arrive faster than the link can carry them, stale words are
   skipped rather than queued.
-- **Focus letter alignment is estimated.** The glasses use one built-in proportional font with no
-  centering, so words are padded with spaces from a glyph width table. Use **Font width calibration**
-  on the phone page until the focus letter sits between the guide ticks.
+- **Focus letter alignment is accurate to about 2 px.** The glasses use one built-in proportional
+  font with no centering, so words are padded with spaces. Widths are measured with Even's
+  `@evenrealities/pretext` library, which matches the firmware font, so the only error left is
+  rounding to a whole space.
 - **Not ported:** page reading mode, right-to-left and CJK shaping, custom fonts and themes, focus
   timers, RSS, screensavers and OTA.
 
@@ -221,7 +222,7 @@ distribution, run `npm run pack`, which produces `glasses/rsvpnano.ehpk`.
 | `npm install` fails with `ERESOLVE` and a TypeScript peer conflict | The Even Hub CLI requires TypeScript 5. Check that `package.json` lists `"typescript": "^5.9.3"`, delete `node_modules` and `package-lock.json`, and install again. |
 | `vite: command not found` or `vitest: command not found` | `npm install` did not finish. Fix the install error first. |
 | The QR code opens nothing | Open the same address in your phone's browser. If it shows "Preview mode", the network is fine. If it doesn't load, check the firewall rule and that both devices are on the same Wi-Fi, not a guest network. |
-| The focus letter drifts off the guide ticks | Adjust **Font width calibration** on the phone page. |
+| The focus letter drifts off the guide ticks | Small drift (under half a space) is expected. Larger drift means the firmware font changed: update `@evenrealities/pretext`. |
 
 Opening the dev server address in a normal desktop browser runs **preview mode**: there is no glasses
 connection, and the lens preview shows exactly what would be sent to the glasses.

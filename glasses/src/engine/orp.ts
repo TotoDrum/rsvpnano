@@ -2,8 +2,9 @@
 //
 // The G2 firmware renders all text in one proportional font with no alignment
 // options, so a word can't be anchored on its focus letter directly. Instead we
-// estimate glyph widths and left-pad with spaces so the focus letter lands near
-// a fixed column. The estimate is tunable from the phone (fontScale).
+// measure it with Even's firmware font metrics and left-pad with spaces so the
+// focus letter lands within half a space of a fixed column.
+import { getTextWidth } from '@evenrealities/pretext';
 
 /** Same table as focusOrdinal() in ReaderScreen.cpp. */
 export function focusOrdinal(length: number): number {
@@ -26,28 +27,6 @@ export function focusIndex(word: string): number {
   return wordCharPositions[target];
 }
 
-// Relative glyph widths for a typical proportional sans font, in "em-ish" units.
-const NARROW = new Set([...'il.,:;\'!|`ı']);
-const SEMI_NARROW = new Set([...'fjrtI()[]{}"-/\\1']);
-const WIDE = new Set([...'mwMW@%']);
-const SEMI_WIDE = new Set([...'ABCDGHKNOQRUVXY&']);
-
-export function glyphWidth(c: string): number {
-  if (c === ' ') return 0.32;
-  if (NARROW.has(c)) return 0.3;
-  if (SEMI_NARROW.has(c)) return 0.45;
-  if (WIDE.has(c)) return 1.05;
-  if (SEMI_WIDE.has(c)) return 0.8;
-  if (/\p{Lu}/u.test(c)) return 0.7;
-  return 0.62;
-}
-
-export function textWidth(text: string): number {
-  let w = 0;
-  for (const c of text) w += glyphWidth(c);
-  return w;
-}
-
 export interface AnchorLayout {
   /** Word padded with leading spaces so its focus letter sits on the anchor. */
   line: string;
@@ -56,22 +35,36 @@ export interface AnchorLayout {
 }
 
 /**
- * @param anchorUnits column of the anchor, in glyph-width units from the left edge
+ * @param anchorPx column of the anchor, in pixels from the container's left edge
  * @param mode 'orp' anchors the focus letter, 'center' centers the whole word
  */
-export function layoutWord(word: string, anchorUnits: number, mode: 'orp' | 'center', guideChar = '|'): AnchorLayout {
-  const space = glyphWidth(' ');
-  const padFor = (units: number) => ' '.repeat(Math.max(0, Math.round(units / space)));
-  const guide = padFor(anchorUnits - glyphWidth(guideChar) / 2) + guideChar;
+export function layoutWord(word: string, anchorPx: number, mode: 'orp' | 'center', guideChar = '|'): AnchorLayout {
+  const guide = pad(guideChar, getTextWidth(guideChar) / 2, anchorPx) + guideChar;
   if (!word) return { line: '', guide };
 
-  let before: number;
-  if (mode === 'center') {
-    before = textWidth(word) / 2;
-  } else {
-    const chars = [...word];
-    const idx = Math.max(0, focusIndex(word));
-    before = textWidth(chars.slice(0, idx).join('')) + glyphWidth(chars[idx]) / 2;
+  if (mode === 'center') return { line: pad(word, getTextWidth(word) / 2, anchorPx) + word, guide };
+
+  // Measure through the focus letter so kerning against the previous glyph counts.
+  const chars = [...word];
+  const idx = Math.max(0, focusIndex(word));
+  const throughFocus = chars.slice(0, idx + 1).join('');
+  return { line: pad(throughFocus, getTextWidth(chars[idx]) / 2, anchorPx) + word, guide };
+}
+
+/**
+ * Leading spaces that put the point `back` px before the end of `text` closest to
+ * `anchorPx`. Checks neighbouring counts against the real padded width, since
+ * per-glyph rounding and kerning against the spaces can shift it by a pixel or two.
+ */
+function pad(text: string, back: number, anchorPx: number): string {
+  const space = getTextWidth(' ');
+  const estimate = Math.round((anchorPx - getTextWidth(text) + back) / space);
+  let best = '';
+  let bestErr = Infinity;
+  for (let n = Math.max(0, estimate - 1); n <= Math.max(0, estimate + 1); n++) {
+    const padding = ' '.repeat(n);
+    const err = Math.abs(getTextWidth(padding + text) - back - anchorPx);
+    if (err < bestErr) [best, bestErr] = [padding, err];
   }
-  return { line: padFor(anchorUnits - before) + word, guide };
+  return best;
 }

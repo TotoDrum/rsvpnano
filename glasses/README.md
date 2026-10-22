@@ -42,10 +42,10 @@ settings and the same playback controls.
 - **Speed cap 600 wpm.** Each `textContainerUpgrade` takes about 80 ms over
   BLE. Updates are serialized with one call in flight; if words come faster
   than the link, stale words are dropped instead of queuing up.
-- **ORP alignment is estimated.** The firmware font is proportional with no
-  centering, so the word is left-padded with spaces using an approximate glyph
-  width table. Use **Font width calibration** on the phone until the focus
-  letter sits between the guide ticks on your lenses.
+- **ORP alignment is quantized to spaces.** The firmware font is proportional
+  with no centering, so the word is left-padded with spaces. Widths come from
+  `@evenrealities/pretext`, Even's copy of the firmware font metrics, so the
+  focus letter lands within half a space (about 2 px) of the guide ticks.
 - **Storage.** Browser storage is wiped when the Even App restarts, so books,
   progress and settings go through `bridge.setLocalStorage`, with book text
   split into 60k character chunks.
